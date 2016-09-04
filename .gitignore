@@ -4,6 +4,8 @@
 
 ## python
 
+/.virtualenv/
+/python_modules
 __pycache__/
 *.pyc
 
@@ -12,7 +14,3 @@ __pycache__/
 
 *.swo
 *.swp
-
-## app
-
-/*.log*
