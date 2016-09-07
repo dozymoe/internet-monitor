@@ -15,8 +15,12 @@ class SysLogHandler(asyncio.DatagramProtocol):
     """ SOCK_DGRAM protocol """
 
     def connection_made(self, transport):
-        for intf in self.runner.data:
-            self.runner.loop.create_task(self.runner.restart_interface(intf))
+        for interface in self.runner.data:
+            data = self.runner.data[interface]
+            if not data['active']:
+                continue
+            self.runner.loop.create_task(self.runner.restart_interface(interface))
+            self.runner.loop.create_task(self.runner.test_connection(interface))
 
 
     def datagram_received(self, data, addr):

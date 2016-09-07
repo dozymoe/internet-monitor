@@ -3,6 +3,7 @@ import re
 
 from copy import copy
 from datetime import datetime, timedelta
+from random import shuffle
 
 MULTIPATH_TABLE = 323
 
@@ -19,6 +20,7 @@ class Runner(object):
     log = None
     loop = None
     reroute_timestamp = None
+    rerouting = False
 
     def __init__(self, event_loop, config, logger):
         self.data = {}
@@ -32,6 +34,7 @@ class Runner(object):
                 'local_ip': None,
                 'network': None,
                 'route': None,
+                'test_success_count': 1,
             }
             self.data[intf].update(config[intf])
 
@@ -41,7 +44,7 @@ class Runner(object):
 
     @asyncio.coroutine
     def network_added(self, interface, defroute, log_timestamp):
-        self.log.debug('Runner::network_added')
+        self.log.debug('Runner::network %s added.' % interface)
         data = self.data.get(interface)
         if data is None or not data['active']:
             yield from asyncio.sleep(5)
@@ -78,6 +81,7 @@ class Runner(object):
             self.loop.create_task(self.setup_routing())
             return
 
+        self.rerouting = True
         self.reroute_timestamp = None
         self.log.debug('Runner:setup_routing')
 
@@ -142,6 +146,7 @@ class Runner(object):
 
         hops = [x for x in self.data if self.data[x]['active'] and \
                 self.data[x]['connected']]
+        shuffle(hops)
 
         if len(hops) == 0:
             load_balancing = None
@@ -163,20 +168,17 @@ class Runner(object):
 
         yield from process.wait()
 
+        self.rerouting = False
         self.loop.create_task(self.setup_routing())
 
 
     @asyncio.coroutine
     def network_removed(self, interface):
-        self.log.debug('Runner::network_removed')
         if interface not in self.data:
             return
+        self.log.debug('Runner::network %s removed.' % interface)
 
         data = self.data[interface]
-
-        if data['connected']:
-            self.loop.create_task(self.restart_interface(interface))
-
         data['connected'] = False
         data['local_ip'] = None
         data['network'] = None
@@ -188,22 +190,22 @@ class Runner(object):
 
     @asyncio.coroutine
     def restart_interface(self, interface):
-        self.log.debug('Runner::restart_interface')
-        yield from asyncio.sleep(10)
+        yield from asyncio.sleep(5)
+        self.log.debug('Runner::restart %s interface.' % interface)
         process = yield from asyncio.create_subprocess_exec(
                 '/etc/init.d/net.%s' % interface, 'restart')
 
         yield from process.wait()
-        self.loop.create_task(self.test_connection(interface))
 
 
     @asyncio.coroutine
     def test_connection(self, interface):
-        self.log.debug('Runner:test_connection')
-        yield from asyncio.sleep(30)
-
         data = self.data[interface]
-        if data['connected']:
+        yield from asyncio.sleep(60 * data['test_success_count'])
+        self.log.debug('Runner:test %s connection.' % interface)
+
+        if self.rerouting:
+            self.loop.create_task(self.test_connection(interface))
             return
 
         process = yield from asyncio.create_subprocess_exec(
@@ -218,8 +220,13 @@ class Runner(object):
                 match.group('max') and match.group('count')
 
         if not success:
+            data['test_success_count'] = 1
             self.log.error('Ping failed: %s.' % out)
             self.loop.create_task(self.restart_interface(interface))
+        elif data['test_success_count'] < 15:
+            data['test_success_count'] += 1
+
+        self.loop.create_task(self.test_connection(interface))
 
 
     @asyncio.coroutine
