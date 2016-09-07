@@ -136,7 +136,22 @@ class Runner(object):
             yield from process.wait()
 
         process = yield from asyncio.create_subprocess_exec(
-                '/bin/ip', 'rule', 'add', 'prio', multipath_table, 'table',
+                '/bin/ip', 'rule', 'del', 'prio', '32765')
+
+        yield from process.wait()
+
+        process = yield from asyncio.create_subprocess_exec(
+                '/bin/ip', 'rule', 'add', 'prio', '32765', 'table', 'main')
+
+        yield from process.wait()
+
+        process = yield from asyncio.create_subprocess_exec(
+                '/bin/ip', 'rule', 'del', 'prio', '32766')
+
+        yield from process.wait()
+
+        process = yield from asyncio.create_subprocess_exec(
+                '/bin/ip', 'rule', 'add', 'prio', '32766', 'table',
                 multipath_table)
 
         yield from process.wait()
