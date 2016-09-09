@@ -7,8 +7,9 @@ from random import shuffle
 
 MULTIPATH_TABLE = 323
 
+DEFROUTE_DEF_RE = re.compile(r'default (?P<route>via \d+\.\d+\.\d+\.\d+)')
 ROUTE_DEF_RE = re.compile(r'(?P<network>\d+\.\d+\.\d+\.\d+/\d+).*?' +\
-        r'src (?P<ip>\d+\.\d+\.\d+\.\d+).*')
+        r'src (?P<ip>\d+\.\d+\.\d+\.\d+)')
 
 PING_SUCCESS_RE = re.compile(r'(?P<max>\d+) packets transmitted, ' +\
         r'(?P<count>\d+) received')
@@ -33,6 +34,7 @@ class Runner(object):
                 'weight': 1,
                 'local_ip': None,
                 'network': None,
+                'network_type': 'dhcp',
                 'route': None,
                 'test_success_count': 1,
             }
@@ -53,17 +55,30 @@ class Runner(object):
             yield from process.wait()
             return
 
+        if defroute is None:
+            if data['network_type'] == 'dhcp':
+                return
+            elif data['network_type'] == 'static':
+                yield from asyncio.sleep(2)
+
         self.log.info('New network connection for %s.' % interface)
 
         process = yield from asyncio.create_subprocess_exec(
-                '/bin/ip', 'route', 'list', 'dev', interface, 'scope', 'link',
+                '/bin/ip', 'route', 'list', 'dev', interface,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE)
 
         out, err = yield from process.communicate()
         out = out.decode()
 
-        match = ROUTE_DEF_RE.match(out)
+        if defroute is None and data['network_type'] == 'static':
+            match = DEFROUTE_DEF_RE.match(out)
+            if match is None:
+                self.log.error('Static network %s without gateway.' % interface)
+                return
+            defroute = match.group('route')
+
+        match = ROUTE_DEF_RE.search(out)
         data['network'] = match.group('network')
         data['local_ip'] = match.group('ip')
         data['route'] = '%s dev %s' % (defroute, interface)
