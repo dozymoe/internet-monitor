@@ -3,7 +3,7 @@ import re
 from dateutil import parser as timeparser
 
 INTF_REMOVE_RE = re.compile(r'(?P<intf>\w+): removing interface')
-DHCPCD_ADD_RE = re.compile(r'(?P<intf>\w+): adding default route ' +\
+DHCPCD_ADD_RE = re.compile(r'(?P<intf>\w+): (adding|changing) default route ' +\
         r'(?P<route>.*)')
 WPA_ADD_RE = re.compile(r'interface (?P<intf>\w+) CONNECTED')
 KERNEL_ADD_RE = re.compile(r'(?P<intf>\w+): link becomes ready')
