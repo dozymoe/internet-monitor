@@ -3,7 +3,6 @@ import re
 
 from copy import copy
 from datetime import datetime, timedelta
-from random import shuffle
 
 MULTIPATH_TABLE = 323
 
@@ -79,12 +78,18 @@ class Runner(object):
             defroute = match.group('route')
 
         match = ROUTE_DEF_RE.search(out)
-        data['network'] = match.group('network')
-        data['local_ip'] = match.group('ip')
-        data['route'] = '%s dev %s' % (defroute, interface)
-        data['connected'] = True
+        if match.group('ip').startswith('169.254.'):
+            data['connected'] = False
+            process = yield from asyncio.create_subprocess_exec(
+                    '/bin/ip', 'route', 'del', 'default', defroute)
+            yield from process.wait()
+        else:
+            data['network'] = match.group('network')
+            data['local_ip'] = match.group('ip')
+            data['route'] = '%s dev %s' % (defroute, interface)
+            data['connected'] = True
 
-        self.reroute_timestamp = log_timestamp + timedelta(seconds=10)
+            self.reroute_timestamp = log_timestamp + timedelta(seconds=10)
 
 
     @asyncio.coroutine
@@ -176,7 +181,6 @@ class Runner(object):
 
         hops = [x for x in self.data if self.data[x]['active'] and \
                 self.data[x]['connected']]
-        shuffle(hops)
 
         if len(hops) == 0:
             load_balancing = None
