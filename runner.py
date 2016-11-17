@@ -49,8 +49,9 @@ class Runner(object):
         data = self.data.get(interface)
         if data is None or not data['active']:
             yield from asyncio.sleep(5)
-            process = yield from asyncio.create_subprocess_exec(
-                    '/bin/ip', 'route', 'del', 'default', defroute)
+            args = ['/bin/ip', 'route', 'del', 'default']
+            args += defroute.split(' ')
+            process = yield from asyncio.create_subprocess_exec(*args)
             yield from process.wait()
             return
 
@@ -77,19 +78,24 @@ class Runner(object):
                 return
             defroute = match.group('route')
 
+        del_default_args = ['/bin/ip', 'route', 'del', 'default']
+        del_default_args += defroute.split(' ')
+
         match = ROUTE_DEF_RE.search(out)
         if match.group('ip').startswith('169.254.'):
             data['connected'] = False
-            process = yield from asyncio.create_subprocess_exec(
-                    '/bin/ip', 'route', 'del', 'default', defroute)
+            process = yield from asyncio.create_subprocess_exec(*del_default_args)
             yield from process.wait()
-        else:
+        elif data['connected'] == False or data['local_ip'] != match.group('ip'):
             data['network'] = match.group('network')
             data['local_ip'] = match.group('ip')
             data['route'] = '%s dev %s' % (defroute, interface)
             data['connected'] = True
 
             self.reroute_timestamp = log_timestamp + timedelta(seconds=10)
+        else:
+            process = yield from asyncio.create_subprocess_exec(*del_default_args)
+            yield from process.wait()
 
 
     @asyncio.coroutine
@@ -181,6 +187,8 @@ class Runner(object):
 
         hops = [x for x in self.data if self.data[x]['active'] and \
                 self.data[x]['connected']]
+
+        self.log.debug(repr(hops))
 
         if len(hops) == 0:
             load_balancing = None

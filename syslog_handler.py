@@ -3,6 +3,7 @@ import re
 from dateutil import parser as timeparser
 
 INTF_REMOVE_RE = re.compile(r'(?P<intf>\w+): removing interface')
+WPA_REMOVE_RE = re.compile(r'interface (?P<intf>\w+) DISCONNECTED')
 DHCPCD_ADD_RE = re.compile(r'(?P<intf>\w+): (adding|changing) default route ' +\
         r'(?P<route>.*)')
 WPA_ADD_RE = re.compile(r'interface (?P<intf>\w+) CONNECTED')
@@ -44,6 +45,10 @@ class SysLogHandler(asyncio.DatagramProtocol):
             return
 
         match = INTF_REMOVE_RE.match(sysmatch.group('msg'))
+        if match is not None:
+            runner.loop.create_task(runner.network_removed(match.group('intf')))
+            return
+        match = WPA_REMOVE_RE.match(sysmatch.group('msg'))
         if match is not None:
             runner.loop.create_task(runner.network_removed(match.group('intf')))
             return
